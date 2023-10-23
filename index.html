@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>スイカゲームもどき01</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js"></script>
+    <style type="text/css">
+        html {
+            margin: 0;
+            height: 100%;
+            width: 100%;
+            /* overflow: auto; */
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: auto;
+            /* viewport height: ビューポートの高さに合わせる */
+            overflow: auto;
+            /* スクロールを可能にする */
+        }
+
+        #gameContainer {
+            width: 600px;
+            /* あなたのゲームの幅に合わせて変更してください */
+            height: 800px;
+            /* あなたのゲームの高さに合わせて変更してください */
+        }
+    </style>
+</head>
+
+<body>
+    <div id="gameContainer">
+        <!-- Phaser game's canvas or WebGL content will be appended here automatically -->
+    </div>
+    <script type="text/javascript">
+        var config = {
+            type: Phaser.AUTO,
+            width: 600,
+            height: 800,
+            parent: 'gameContainer',
+            physics: {
+                default: 'matter',
+                matter: {
+                    gravity: { y: 1.2 },
+                    debug: false
+                }
+            },
+            scene: {
+                preload: preload,
+                create: create,
+                update: update
+            }
+        };
+
+        var game = new Phaser.Game(config);
+        var balls;
+        var score = 0;
+        var scoreText;
+        var nextBallType; // 次のボールのタイプ
+        var nextBall;    // 次のボールの表示
+
+
+        function preload() {
+            for (var i = 1; i <= 11; i++) {
+                this.load.image("ball" + i, "images2/ball_" + i + ".png");
+            }
+            this.load.image('retryButton', 'images2/retryButton.jpg');
+        }
+
+        function getScaleForBallType(type) {
+            const baseScale = 0.05;
+            return baseScale + type * 0.02;
+        }
+
+        // 1. ゲームオーバーの状態を追加する
+        var gameOver = false;
+        var gameOverText;
+        var frameY;  // ここに追加
+
+        function create() {
+            scoreText = this.add.text(16, 16, 'Score: 0', { fontSize: '32px', fill: '#FFFFFF' });
+            var frameWidth = game.config.width * 0.6;
+            var frameHeight = game.config.height * 0.6;
+            var frameX = (game.config.width - frameWidth) / 2;
+            frameY = (game.config.height - frameHeight) / 2;
+            var frameXLeft = (game.config.width - frameWidth) / 2; // フレームの左上のX座標
+            var frameXRight = frameXLeft + frameWidth; // フレームの右上のX座標
+            var dropLimitY = frameY - frameHeight / 100;
+            var frameBuffer = frameWidth / 50;
+
+            this.retryButton = this.add.image(300, 300, 'retryButton').setInteractive();
+            // xとy座標を指定する
+            // this.retryButton.x = 400; // ゲーム画面の中央のx座標を指定
+            // this.retryButton.y = 300; // ゲーム画面の中央のy座標を指定
+            this.retryButton.setScale(0.5);
+            this.retryButton.visible = false;
+
+            this.retryButton.on('pointerdown', function () {
+                // ここにリトライ処理を追加
+                gameOver = false; // この行を追加
+                score = 0;  // スコアをリセットする
+                this.scene.restart();
+            }, this);
+
+
+            var graphics = this.add.graphics();
+            graphics.lineStyle(4, 0x00FFFF, 1);
+            // graphics.strokeRect(frameX, frameY, frameWidth, frameHeight);
+            graphics.moveTo(frameX, frameY + frameHeight);
+            graphics.lineTo(frameX + frameWidth, frameY + frameHeight);
+            // 左辺
+            graphics.moveTo(frameX, frameY);
+            graphics.lineTo(frameX, frameY + frameHeight);
+            // 右辺
+            graphics.moveTo(frameX + frameWidth, frameY);
+            graphics.lineTo(frameX + frameWidth, frameY + frameHeight);
+            graphics.strokePath();
+
+            this.matter.add.rectangle(frameX + frameWidth / 2, frameY + frameHeight, frameWidth, 5, { isStatic: true });
+            this.matter.add.rectangle(frameX, frameY + frameHeight / 2, 5, frameHeight, { isStatic: true });
+            this.matter.add.rectangle(frameX + frameWidth, frameY + frameHeight / 2, 5, frameHeight, { isStatic: true });
+
+            // balls = this.add.group();
+            balls = [];
+            this.lastDropTime = 0;
+
+            this.input.on('pointerdown', function (pointer) {
+                var currentTime = this.time.now;
+                if (currentTime - this.lastDropTime < 500) {
+                    // 0.5秒以上経過していない場合、何もしない
+                    return;
+                }
+                // ポインタのy座標がdropLimitYよりも上にあるかどうかをチェック
+                if (pointer.x >= frameXLeft + frameBuffer && pointer.x <= frameXRight - frameBuffer) {
+                    var randomType = Math.floor(Math.random() * 5) + 1;
+                    var ball = this.matter.add.image(pointer.x, dropLimitY, 'ball' + nextBallType, null, {
+                        restitution: 0.1,
+                        density: 0.007,
+                        frictionAir: 0.02,
+                        friction: 0.8,
+                        frictionStatic: 0.9
+                    });
+
+                    ball.justDropped = true;
+                    this.time.delayedCall(1000, function () {
+                        ball.justDropped = false;
+                    }, [], this);
+
+                    // ball.type = randomType;
+                    // ball.setScale(getScaleForBallType(randomType));
+                    ball.type = nextBallType;
+                    ball.setScale(getScaleForBallType(nextBallType));
+                    balls.push(ball);
+                    this.lastDropTime = currentTime;
+
+                    // 新しい次のボールのタイプを決定
+                    nextBallType = Math.floor(Math.random() * 5) + 1;
+                    nextBall.setTexture('ball' + nextBallType);
+                    nextBall.setScale(getScaleForBallType(nextBallType));
+                }
+            }, this);
+
+            // 次のボールの初期タイプを決定
+            nextBallType = Math.floor(Math.random() * 5) + 1;
+            nextBall = this.add.image(50, game.config.height - 50, 'ball' + nextBallType);
+            nextBall.setScale(getScaleForBallType(nextBallType));
+
+
+            this.matter.world.on('collisionstart', function (event) {
+                for (var i = 0; i < event.pairs.length; i++) {
+                    var bodyA = event.pairs[i].bodyA;
+                    var bodyB = event.pairs[i].bodyB;
+                    if (balls.includes(bodyA.gameObject) && balls.includes(bodyB.gameObject)) {
+                        handleBallCollision(this, bodyA.gameObject, bodyB.gameObject);
+                    }
+                }
+            }, this);
+
+            gameOverText = this.add.text(game.config.width / 2, game.config.height / 2, '画像を押してリトライしてね', { fontSize: '64px', fill: '#00FF00' });
+            gameOverText.setScale(0.5);
+            gameOverText.setVisible(false);
+            gameOverText.setDepth(9999);
+            gameOverText.setOrigin(0.5); // テキストの中心を原点として設定
+        }
+
+        function handleBallCollision(scene, ball1, ball2) {
+            if (ball1.type === ball2.type) {
+                if (ball1.type === 11 && ball2.type === 11) {
+                    return;
+                }
+                var newType = ball1.type + 1;
+                var newX = (ball1.x + ball2.x) / 2;
+                var newY = (ball1.y + ball2.y) / 2;
+
+                var newBall = scene.matter.add.image(newX, newY, 'ball' + newType);
+                newBall.type = newType;
+                newBall.setScale(getScaleForBallType(newType));
+                balls.push(newBall);
+
+                // 三角数に基づいたスコアの加算
+                score += (newType * (newType - 1)) / 2;
+                scoreText.setText('Score: ' + score);
+
+                var ball1Index = balls.indexOf(ball1);
+                if (ball1Index !== -1) balls.splice(ball1Index, 1);
+                var ball2Index = balls.indexOf(ball2);
+                if (ball2Index !== -1) balls.splice(ball2Index, 1);
+
+                ball1.destroy();
+                ball2.destroy();
+            }
+        }
+
+        function update() {
+            var ballsToDestroy = [];  // 削除すべきボールのインデックスを保存する配列
+            balls.forEach(function (ball, index) {
+                if (!ball) return;  // ここを追加
+                // ボールがフレームの外に出た場合、そのボールを破棄
+                if (ball.x < 0 || ball.x > game.config.width || ball.y < 0 || ball.y > game.config.height) {
+                    ballsToDestroy.push(index);
+                }
+                // ボールがフレームの上辺を超えた場合のゲームオーバーの判定
+                if (ball.y < frameY && !ball.justDropped) {
+                    gameOver = true; // ゲームオーバーのフラグを立てる
+                }
+            });
+
+            // 保存されたインデックスに対応するボールを破棄し、配列から削除
+            for (var i = ballsToDestroy.length - 1; i >= 0; i--) {
+                balls[ballsToDestroy[i]].destroy();
+                balls.splice(ballsToDestroy[i], 1);
+            }
+
+            // 4. ゲームオーバー時の処理を追加する
+            if (gameOver) {
+                gameOverText.setVisible(true); // ゲームオーバーのテキストを表示
+                this.matter.world.pause();
+                this.retryButton.visible = true;
+                this.retryButton.setDepth(9998); // この行を追加
+            } else {
+                gameOverText.setVisible(false); // この行を追加
+                this.retryButton.visible = false; // この行を追加
+            }
+        }
+
+    </script>
+</body>
+
+</html>
